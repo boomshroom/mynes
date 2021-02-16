@@ -11,4 +11,5 @@ opt-level = 3
 memmap = "0.7.0"
 genawaiter = { version = "0.99.1", default_features = false }
 bounded-integer = "0.3.0"
+rgb = "0.8.25"
 # minifb = "0.19.2"

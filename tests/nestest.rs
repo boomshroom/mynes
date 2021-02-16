@@ -3,7 +3,6 @@ use std::io;
 use mynes::Nes;
 use mynes::Rom;
 
-
 #[test]
 fn nestest() -> io::Result<()> {
     let rom = Rom::parse(include_bytes!("roms/nestest.nes")).unwrap();

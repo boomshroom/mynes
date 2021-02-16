@@ -1,7 +1,7 @@
 use std::num::Wrapping;
 
 use super::{Cpu, Register, StatusFlags};
-use crate::decode::AddressMode;
+use crate::decode::{AddressMode, Fix};
 use crate::Co;
 
 enum Source {
@@ -19,7 +19,7 @@ fn from_le_bytes([low, high]: [Wrapping<u8>; 2]) -> Wrapping<u16> {
 }
 
 impl Cpu {
-    async fn fetch_add(&mut self, src: Source, offset: u8, co: &Co<'_>) -> u16 {
+    async fn fetch_add(&mut self, src: Source, offset: u8, fix: Fix, co: &Co<'_>) -> u16 {
         let [low, high] = match src {
             Source::Pc => {
                 let low = self.advance(co).await.0;
@@ -30,8 +30,13 @@ impl Cpu {
         };
 
         let (effective_low, wrapped) = low.overflowing_add(offset);
-        let effective_high = if wrapped {
+        if fix == Fix::Always {
             get!(co, u16::from_le_bytes([effective_low, high]));
+        }
+        let effective_high = if wrapped {
+            if fix == Fix::Conditional {
+                get!(co, u16::from_le_bytes([effective_low, high]));
+            }
             high.wrapping_add(1)
         } else {
             high
@@ -48,15 +53,27 @@ impl Cpu {
             }
             AddressMode::Immediate => Some(self.next_pc()),
             AddressMode::ZeroPage => Some(u16::from(self.advance(co).await.0)),
-            AddressMode::ZeroPageX => Some(u16::from((self.advance(co).await + self.x).0)),
-            AddressMode::ZeroPageY => Some(u16::from((self.advance(co).await + self.y).0)),
+            AddressMode::ZeroPageX => {
+                let addr = self.advance(co).await;
+                get!(co, u16::from(addr.0));
+                Some(u16::from((addr + self.x).0))
+            }
+            AddressMode::ZeroPageY => {
+                let addr = self.advance(co).await;
+                get!(co, u16::from(addr.0));
+                Some(u16::from((addr + self.y).0))
+            }
             AddressMode::Absolute => {
                 let low = self.advance(co).await;
                 let high = self.advance(co).await;
                 Some(u16::from_le_bytes([low.0, high.0]))
             }
-            AddressMode::AbsoluteX => Some(self.fetch_add(Source::Pc, self.x.0, co).await),
-            AddressMode::AbsoluteY => Some(self.fetch_add(Source::Pc, self.y.0, co).await),
+            AddressMode::AbsoluteX(fix) => {
+                Some(self.fetch_add(Source::Pc, self.x.0, fix, co).await)
+            }
+            AddressMode::AbsoluteY(fix) => {
+                Some(self.fetch_add(Source::Pc, self.y.0, fix, co).await)
+            }
             AddressMode::Indirect => {
                 let low = self.advance(co).await;
                 let high = self.advance(co).await;
@@ -72,7 +89,7 @@ impl Cpu {
                 let high = get!(co, u16::from((entry + Wrapping(1_u8)).0));
                 Some(u16::from_le_bytes([low.0, high.0]))
             }
-            AddressMode::IndirectIndexed => {
+            AddressMode::IndirectIndexed(fix) => {
                 let addr = self.advance(co).await;
                 let low = get!(co, u16::from(addr.0));
                 let high = get!(co, u16::from((addr + Wrapping(1_u8)).0));
@@ -80,6 +97,7 @@ impl Cpu {
                     self.fetch_add(
                         Source::Immediate(u16::from_le_bytes([low.0, high.0])),
                         self.y.0,
+                        fix,
                         co,
                     )
                     .await,
@@ -107,6 +125,7 @@ impl Cpu {
         co: &Co<'_>,
     ) -> Wrapping<u8> {
         let val = get!(co, addr);
+        set!(co, addr <- val);
         let val = op(val);
         set!(co, addr <- val);
         self.status.z = val.0 == 0;
@@ -145,7 +164,9 @@ impl Cpu {
     ) -> Wrapping<u8> {
         let (val, carry) = match arg {
             Some(addr) => {
-                let (val, carry) = op(get!(co, addr), self.status.c);
+                let val = get!(co, addr);
+                set!(co, addr <- val);
+                let (val, carry) = op(val, self.status.c);
                 set!(co, addr <- val);
                 (val, carry)
             }
@@ -204,29 +225,33 @@ impl Cpu {
     }
 
     pub(super) async fn rts(&mut self, co: &Co<'_>) {
+        get!(co, self.pop());
         let pcl = self.pop();
         self.set_pcl(get!(co, pcl));
-        let pch = self.pop();
+        let pch = self.peek();
         self.set_pch(get!(co, pch));
         self.advance(co).await;
     }
 
     pub(super) async fn rti(&mut self, co: &Co<'_>) {
+        get!(co, self.pop());
         self.status = StatusFlags::store(get!(co, self.pop()));
         let pcl = get!(co, self.pop());
-        let pch = get!(co, self.pop());
+        let pch = get!(co, self.peek());
         self.pc = from_le_bytes([pcl, pch]);
     }
 
     pub(super) async fn pla(&mut self, co: &Co<'_>) {
-        self.accum = get!(co, self.pop());
+        get!(co, self.pop());
+        self.accum = get!(co, self.peek());
 
         self.status.z = self.accum.0 == 0;
         self.status.n = (self.accum.0 as i8) < 0;
     }
 
     pub(super) async fn plp(&mut self, co: &Co<'_>) {
-        self.status = StatusFlags::store(get!(co, self.pop()));
+        get!(co, self.pop());
+        self.status = StatusFlags::store(get!(co, self.peek()));
     }
 
     pub(super) async fn branch(&mut self, test: impl FnOnce(&Cpu) -> bool, co: &Co<'_>) -> bool {
@@ -300,8 +325,8 @@ impl Cpu {
 
         let (effective_low, wrapped) = low.overflowing_add(src);
         let high_offset = (high + Wrapping(1)) & mask;
+        get!(co, u16::from_le_bytes([effective_low, high.0]));
         let effective_high = if wrapped {
-            get!(co, u16::from_le_bytes([effective_low, high.0]));
             high_offset
         } else {
             high
@@ -309,5 +334,29 @@ impl Cpu {
         let addr = u16::from_le_bytes([effective_low, effective_high.0]);
 
         set!(co, addr <- high_offset);
+    }
+
+    pub(super) fn xaa(&mut self, imm: Wrapping<u8>) {
+        const MAGIC: Wrapping<u8> = Wrapping(0x00);
+
+        let val = (self.accum | MAGIC) & self.x & imm;
+        self.accum = val;
+        self.status.z = val.0 == 0;
+        self.status.n = (val.0 as i8).is_negative();
+    }
+
+    pub(super) async fn tas(&mut self, addr: u16, co: &Co<'_>) {
+        let val = Wrapping(((addr >> 8) + 1) as u8) & self.accum & self.x;
+        set!(co, addr <- val);
+        self.stack = val;
+    }
+
+    pub(super) fn las(&mut self, arg: Wrapping<u8>) {
+        let val = arg & self.stack;
+        self.accum = val;
+        self.x = val;
+        self.stack = val;
+        self.status.z = val.0 == 0;
+        self.status.n = (val.0 as i8).is_negative();
     }
 }

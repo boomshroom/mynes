@@ -1,3 +1,5 @@
+use crate::ppu::Nametable;
+use crate::ines;
 use super::{CHRBank, PRGBank};
 
 pub struct Mmc1<'a> {
@@ -58,22 +60,31 @@ impl From<u8> for Settings {
 }
 
 impl<'a> Mmc1<'a> {
-    pub fn new(prg_rom: &'a [u8], chr_rom: &'a [u8]) -> Self {
+    pub fn new(prg_rom: &'a [u8], chr_rom: &'a [u8], mirror: ines::Mirroring) -> Self {
         let (prg_rom, extra) = prg_rom.as_chunks();
-        debug_assert_eq!(extra, &[]);
+        debug_assert_eq!(extra, &[] as &[u8]);
         let (chr_rom, extra) = chr_rom.as_chunks();
-        debug_assert_eq!(extra, &[]);
+        debug_assert_eq!(extra, &[] as &[u8]);
         Self {
             prg_rom,
             chr_rom,
             sram: Some([0; 0x2000]),
 
-            settings: Settings::default(),
+            settings: Settings{mirror: mirror.into(), ..Settings::default()},
 
             prg_banks: [&prg_rom[0], &prg_rom[1]],
             //chr_banks: [&chr_rom[0], &chr_rom[1]],
             shift: 0,
             count: 0,
+        }
+    }
+
+    pub fn mirror<'nt>(&self, vram: &'nt[Nametable; 2]) -> [&'nt Nametable; 4] {
+        match self.settings.mirror {
+            Mirroring::Horizontal => [&vram[0], &vram[0], &vram[1], &vram[1]],
+            Mirroring::Vertical => [&vram[0], &vram[1], &vram[0], &vram[1]],
+            Mirroring::Lower => [&vram[0], &vram[0], &vram[0], &vram[0]],
+            Mirroring::Upper => [&vram[1], &vram[1], &vram[1], &vram[1]],
         }
     }
 }
@@ -88,6 +99,16 @@ enum Mirroring {
     Upper = 1,
     Vertical = 2,
     Horizontal = 3,
+}
+
+impl From<ines::Mirroring> for Mirroring {
+    fn from(m: ines::Mirroring) -> Self {
+        match m {
+            ines::Mirroring::Horizontal => Mirroring::Horizontal,
+            ines::Mirroring::Vertical => Mirroring::Vertical,
+            ines::Mirroring::Ignore => Mirroring::Lower,
+        }
+    }
 }
 
 enum PRGMode {
@@ -159,7 +180,7 @@ impl<'a> Mmc1<'a> {
                                     (false, &Some(_)) => self.sram = None,
                                     _ => (),
                                 }
-                                let val = usize::from(shift % 0x0F);
+                                let val = val % 0x0F;
                                 match self.settings.prg_mode {
                                     PRGMode::Full => {
                                         self.prg_banks =

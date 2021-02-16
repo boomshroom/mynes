@@ -28,6 +28,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "bytemuck"
+version = "1.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5a4bad0c5981acc24bc09e532f35160f952e35422603f0563cd7a73c2c2e65a0"
+
+[[package]]
 name = "genawaiter"
 version = "0.99.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -65,6 +71,7 @@ dependencies = [
  "bounded-integer",
  "genawaiter",
  "memmap",
+ "rgb",
 ]
 
 [[package]]
@@ -113,6 +120,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "991431c3519a3f36861882da93630ce66b52918dcf1b8e2fd66b397fc96f28df"
 dependencies = [
  "proc-macro2",
+]
+
+[[package]]
+name = "rgb"
+version = "0.8.25"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "287f3c3f8236abb92d8b7e36797f19159df4b58f0a658cc3fb6dd3004b1f3bd3"
+dependencies = [
+ "bytemuck",
 ]
 
 [[package]]

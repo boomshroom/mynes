@@ -102,7 +102,7 @@ impl Header {
             Version::Archaic
         };
 
-        eprintln!("prg: {}, chr: {}", prg_size, chr_size);
+        eprintln!("prg: {:#X}, chr: {:#X}", prg_size, chr_size);
 
         let mapper = match version {
             Version::Archaic => unimplemented!("Archaic iNES ROM"),

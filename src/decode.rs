@@ -13,11 +13,17 @@ pub enum AddressMode {
     ZeroPageX,
     ZeroPageY,
     Absolute,
-    AbsoluteX,
-    AbsoluteY,
+    AbsoluteX(Fix),
+    AbsoluteY(Fix),
     Indirect,
     IndexedIndirect,
-    IndirectIndexed,
+    IndirectIndexed(Fix),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Fix {
+    Always,
+    Conditional,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -98,6 +104,7 @@ pub enum Opcode {
     ARR,
     SXA,
     SYA,
+    NOPConsume,
     Unofficial(u8),
 }
 use Opcode::*;
@@ -180,10 +187,13 @@ impl Instruction {
                 I3::U1 => ZeroPage,
                 I3::U2 => Immediate,
                 I3::U3 => Absolute,
-                I3::U4 => IndirectIndexed,
+                I3::U4 if row == I3::U4 => IndirectIndexed(Fix::Always),
+                I3::U4 => IndirectIndexed(Fix::Conditional),
                 I3::U5 => ZeroPageX,
-                I3::U6 => AbsoluteY,
-                I3::U7 => AbsoluteX,
+                I3::U6 if row == I3::U4 => AbsoluteY(Fix::Always),
+                I3::U6 => AbsoluteY(Fix::Conditional),
+                I3::U7 if row == I3::U4 => AbsoluteX(Fix::Always),
+                I3::U7 => AbsoluteX(Fix::Conditional),
             },
             Block::Rwm => match col {
                 I3::U0 => match row {
@@ -196,8 +206,8 @@ impl Instruction {
                 I3::U5 => ZeroPageX,
                 I3::U7 => match row {
                     I3::U4 => Manual,
-                    I3::U5 => AbsoluteY,
-                    _ => AbsoluteX,
+                    I3::U5 => AbsoluteY(Fix::Conditional),
+                    _ => AbsoluteX(Fix::Always),
                 },
                 _ => Implicit,
             },
@@ -213,7 +223,7 @@ impl Instruction {
                 I3::U4 => Manual,
                 I3::U5 => ZeroPageX,
                 I3::U7 if row == I3::U4 => Manual,
-                I3::U7 => AbsoluteX,
+                I3::U7 => AbsoluteX(Fix::Conditional),
                 _ => Implicit,
             },
             Block::Unofficial => match col {
@@ -221,12 +231,17 @@ impl Instruction {
                 I3::U1 => ZeroPage,
                 I3::U2 => Immediate,
                 I3::U3 => Absolute,
-                I3::U4 => IndirectIndexed,
+                I3::U4 if row == I3::U5 => IndirectIndexed(Fix::Conditional),
+                I3::U4 => IndirectIndexed(Fix::Always),
                 I3::U5 if row == I3::U4 || row == I3::U5 => ZeroPageY,
                 I3::U5 => ZeroPageX,
-                I3::U6 => AbsoluteY,
-                I3::U7 if row == I3::U4 || row == I3::U5 => AbsoluteY,
-                I3::U7 => AbsoluteX,
+                I3::U6 if row == I3::U5 => AbsoluteY(Fix::Conditional),
+                I3::U6 => AbsoluteY(Fix::Always),
+                I3::U7 => match row {
+                    I3::U4 => AbsoluteY(Fix::Always),
+                    I3::U5 => AbsoluteY(Fix::Conditional),
+                    _ => AbsoluteX(Fix::Always),
+                },
             },
         };
 
@@ -236,7 +251,7 @@ impl Instruction {
                 I3::U1 => AND,
                 I3::U2 => EOR,
                 I3::U3 => ADC,
-                I3::U4 if col == I3::U2 => NOP,
+                I3::U4 if col == I3::U2 => NOPConsume,
                 I3::U4 => STA,
                 I3::U5 => LDA,
                 I3::U6 => CMP,
@@ -304,7 +319,7 @@ impl Instruction {
 
             (I3::U7, I3::U4) => SYA,
 
-            _ => NOP,
+            _ => NOPConsume,
         }
     }
 
@@ -319,9 +334,9 @@ impl Instruction {
             (I3::U6, I3::U5) => TSX,
             (_, I3::U5) => LDX,
 
-            (I3::U0, I3::U4) => NOP,
-            (I3::U0, I3::U6) => NOP,
-            (I3::U0, I3::U7) => NOP,
+            (I3::U0, I3::U4) => NOPConsume,
+            (I3::U0, I3::U6) => NOPConsume,
+            (I3::U0, I3::U7) => NOPConsume,
             (I3::U2, I3::U4) => TXA,
             (I3::U6, I3::U4) => TXS,
             (I3::U7, I3::U4) => SXA,

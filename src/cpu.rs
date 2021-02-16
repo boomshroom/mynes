@@ -107,8 +107,9 @@ impl Cpu {
         stack
     }
     pub fn pop(&mut self) -> u16 {
+        let stack = self.peek();
         self.stack += Wrapping(1);
-        self.peek()
+        stack
     }
 
     pub fn set_pcl(&mut self, pcl: Wrapping<u8>) {
@@ -169,15 +170,16 @@ impl Cpu {
             let instr = Instruction::decode(val);
 
             /*
-            eprintln!(
-                "{:04X}: {:?}\t\t[A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X}] ",
+            println!(
+                "{:04X}: {:?}\t\t[A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X}] CYC:{}",
                 old_pc,
                 instr.op_code,
                 self.accum,
                 self.x,
                 self.y,
                 self.status.load().0 & 0xEF,
-                self.stack
+                self.stack,
+                cycles + 6,
             );
             */
 
@@ -329,6 +331,9 @@ impl Cpu {
                     .await;
                 }
 
+                Opcode::NOPConsume => {
+                    get!(co, addr.unwrap());
+                }
                 Opcode::LAX => {
                     self.load(Register::A, addr.unwrap(), &co).await;
                     self.transfer(Register::A, Register::X);
@@ -401,7 +406,12 @@ impl Cpu {
                 }
                 Opcode::SXA => self.sra(Register::X, &co).await,
                 Opcode::SYA => self.sra(Register::Y, &co).await,
-
+                Opcode::XAA => self.xaa(get!(co, addr.unwrap())),
+                Opcode::AHX => {
+                    set!(co, (addr.unwrap()) <- Wrapping(((addr.unwrap() >> 8) + 1) as u8) & self.accum & self.x)
+                }
+                Opcode::TAS => self.tas(addr.unwrap(), &co).await,
+                Opcode::LAS => self.las(get!(co, addr.unwrap())),
                 _ => return Err(Error::UnknownInstr(instr, self.pc - Wrapping(1))),
             }
         }

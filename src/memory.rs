@@ -1,3 +1,5 @@
+use crate::ppu::VAddr;
+use crate::ppu::Nametable;
 use crate::ines::{Mapper, Rom};
 
 mod mmc1;
@@ -70,13 +72,33 @@ impl<'a> Cartridge<'a> {
             Cartridge::Mmc1(c) => c.set(idx, val),
         }
     }
+
+    pub fn get_ppu(&self, idx: VAddr) -> u8 {
+        match self {
+            Cartridge::NRom(c) => c.get_ppu(idx),
+            Cartridge::Mmc1(_c) => todo!("MMC1 CHR rom/ram"),
+        }
+    }
+    pub fn set_ppu(&mut self, _idx: VAddr, _val: u8) {
+        match self {
+            Cartridge::NRom(_c) => (),
+            Cartridge::Mmc1(_c) => todo!("MMC1 CHR ram"),
+        }
+    }
+
+    pub fn mirror<'nt>(&self, vram: &'nt [Nametable; 2]) -> [&'nt Nametable; 4] {
+        match self {
+            Cartridge::NRom(c) => c.mirror(vram),
+            Cartridge::Mmc1(c) => c.mirror(vram),
+        }
+    }
 }
 
 impl<'a> Cartridge<'a> {
     pub fn from_rom(rom: &Rom<'a>) -> Self {
         match rom.mapper() {
-            Mapper::NROM => Self::NRom(NRom::new(rom.prg, rom.chr)),
-            Mapper::MMC1 => Self::Mmc1(Mmc1::new(rom.prg, rom.chr)),
+            Mapper::NROM => Self::NRom(NRom::new(rom.prg, rom.chr, rom.mirror())),
+            Mapper::MMC1 => Self::Mmc1(Mmc1::new(rom.prg, rom.chr, rom.mirror())),
         }
     }
 }
