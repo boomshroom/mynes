@@ -1,14 +1,18 @@
-use crate::ppu::Nametable;
-use crate::ines;
+use std::borrow::Cow;
+
 use super::{CHRBank, PRGBank};
+use crate::ines;
+use crate::memory::CHR_BANK_SIZE;
+use crate::ppu::{Nametable, VAddr};
+use crate::ppu::pattern::{PatternTableRef, PTIdx};
 
 pub struct Mmc1<'a> {
     prg_rom: &'a [PRGBank],
-    chr_rom: &'a [CHRBank],
+    chr: Cow<'a, [[u8; 0x1000]]>,
     sram: Option<[u8; 0x2000]>,
 
     prg_banks: [&'a PRGBank; 2],
-    //chr_banks: [&'a CHRBank; 2],
+    chr_banks: [usize; 2],
     settings: Settings,
 
     shift: u8,
@@ -67,19 +71,22 @@ impl<'a> Mmc1<'a> {
         debug_assert_eq!(extra, &[] as &[u8]);
         Self {
             prg_rom,
-            chr_rom,
+            chr: Cow::Borrowed(chr_rom),
             sram: Some([0; 0x2000]),
 
-            settings: Settings{mirror: mirror.into(), ..Settings::default()},
+            settings: Settings {
+                mirror: mirror.into(),
+                ..Settings::default()
+            },
 
-            prg_banks: [&prg_rom[0], &prg_rom[1]],
-            //chr_banks: [&chr_rom[0], &chr_rom[1]],
+            prg_banks: [prg_rom.first().unwrap(), prg_rom.last().unwrap()],
+            chr_banks: [0, 1],
             shift: 0,
             count: 0,
         }
     }
 
-    pub fn mirror<'nt>(&self, vram: &'nt[Nametable; 2]) -> [&'nt Nametable; 4] {
+    pub fn mirror<'nt>(&self, vram: &'nt [Nametable; 2]) -> [&'nt Nametable; 4] {
         match self.settings.mirror {
             Mirroring::Horizontal => [&vram[0], &vram[0], &vram[1], &vram[1]],
             Mirroring::Vertical => [&vram[0], &vram[1], &vram[0], &vram[1]],
@@ -130,7 +137,7 @@ impl<'a> Mmc1<'a> {
             0x6000..=0x7fff => self
                 .sram
                 .as_ref()
-                .map(|sram| sram[idx - 0x6000])
+                .map(|sram| sram[idx % 0x2000])
                 .unwrap_or(0),
             0x8000..=0xbfff => self.prg_banks[0][idx - 0x8000],
             0xc000..=0xffff => self.prg_banks[1][idx - 0xc000],
@@ -159,19 +166,21 @@ impl<'a> Mmc1<'a> {
                         let val = usize::from(shift);
 
                         match (idx >> 13) % 4 {
-                            CONTROL => self.settings = Settings::from(shift),
-                            CHR_1 => {
-                                //todo!();
-                                /*
-                                match self.settings.chr_mode {
-                                    CHRMode::Full => self.chr_banks = [&self.chr_rom[val & !1], &self.chr_rom[val | 1]],
-                                    CHRMode::Half => self.chr_banks[0] = &self.chr_rom[val],
+                            CONTROL => {
+                                self.settings = Settings::from(shift);
+                                /*match self.settings.prg_mode {
+                                    PRGMode::FixFirst => self.prg_banks[0] = self.prg_rom.first().unwrap(),
+                                    PRGMode::FixLast => self.prg_banks[1] = self.prg_rom.last().unwrap(),
+                                    PRGMode::Full => (),
                                 }*/
                             }
+                            CHR_1 => match self.settings.chr_mode {
+                                CHRMode::Full => self.chr_banks = [val & !1, val | 1],
+                                CHRMode::Half => self.chr_banks[0] = val,
+                            },
                             CHR_2 => {
                                 if self.settings.chr_mode == CHRMode::Half {
-                                    //todo!();
-                                    //self.chr_banks[1] = &self.chr_rom[val];
+                                    self.chr_banks[1] = val;
                                 }
                             }
                             PRG => {
@@ -184,10 +193,16 @@ impl<'a> Mmc1<'a> {
                                 match self.settings.prg_mode {
                                     PRGMode::Full => {
                                         self.prg_banks =
-                                            [&self.prg_rom[val & !1], &self.prg_rom[val | 1]]
+                                            [&self.prg_rom[val & !1], &self.prg_rom[val | 1]];
                                     }
-                                    PRGMode::FixFirst => self.prg_banks[1] = &self.prg_rom[val],
-                                    PRGMode::FixLast => self.prg_banks[0] = &self.prg_rom[val],
+                                    PRGMode::FixFirst => {
+                                        self.prg_banks =
+                                            [self.prg_rom.first().unwrap(), &self.prg_rom[val]];
+                                    }
+                                    PRGMode::FixLast => {
+                                        self.prg_banks =
+                                            [&self.prg_rom[val], self.prg_rom.last().unwrap()];
+                                    }
                                 }
                             }
                             _ => unreachable!(),
@@ -199,6 +214,35 @@ impl<'a> Mmc1<'a> {
                 }
             }
             _ => (),
+        }
+    }
+
+    pub fn get_pattern_table(&'a self, idx: PTIdx) -> PatternTableRef<'a> {
+        let bank = match idx {
+            PTIdx::Left => self.chr_banks[0],
+            PTIdx::Right => self.chr_banks[1],
+        };
+        PatternTableRef(&self.chr[bank])
+    }
+
+    pub fn get_ppu(&self, idx: VAddr) -> u8 {
+        if let 0x0000..=0x1FFF = idx.get() {
+            let bank = usize::from(idx.get() / 0x1000);
+            self.chr
+                .get(self.chr_banks[bank])
+                .map(|b| b[usize::from(idx.get() % 0x1000)])
+                .unwrap_or(0)
+        } else {
+            0
+        }
+    }
+    pub fn set_ppu(&mut self, idx: VAddr, val: u8) {
+        use std::iter::repeat;
+        if let 0x0000..=0x1FFF = idx.get() {
+            let bank = self.chr_banks[usize::from(idx.get() / 0x1000)];
+            let chr = self.chr.to_mut();
+            chr.extend(repeat([0; 0x1000]).take((bank + 1).saturating_sub(chr.len())));
+            chr[bank][usize::from(idx.get() % 0x1000)] = val;
         }
     }
 }

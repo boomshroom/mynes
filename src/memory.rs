@@ -1,6 +1,6 @@
-use crate::ppu::VAddr;
-use crate::ppu::Nametable;
 use crate::ines::{Mapper, Rom};
+use crate::ppu::{Nametable, VAddr};
+use crate::ppu::pattern::{PatternTableRef, PTIdx};
 
 mod mmc1;
 mod nrom;
@@ -76,13 +76,13 @@ impl<'a> Cartridge<'a> {
     pub fn get_ppu(&self, idx: VAddr) -> u8 {
         match self {
             Cartridge::NRom(c) => c.get_ppu(idx),
-            Cartridge::Mmc1(_c) => todo!("MMC1 CHR rom/ram"),
+            Cartridge::Mmc1(c) => c.get_ppu(idx),
         }
     }
-    pub fn set_ppu(&mut self, _idx: VAddr, _val: u8) {
+    pub fn set_ppu(&mut self, idx: VAddr, val: u8) {
         match self {
-            Cartridge::NRom(_c) => (),
-            Cartridge::Mmc1(_c) => todo!("MMC1 CHR ram"),
+            Cartridge::NRom(_c) => todo!("NROM CHR ram"),
+            Cartridge::Mmc1(c) => c.set_ppu(idx, val),
         }
     }
 
@@ -92,13 +92,18 @@ impl<'a> Cartridge<'a> {
             Cartridge::Mmc1(c) => c.mirror(vram),
         }
     }
-}
 
-impl<'a> Cartridge<'a> {
     pub fn from_rom(rom: &Rom<'a>) -> Self {
         match rom.mapper() {
             Mapper::NROM => Self::NRom(NRom::new(rom.prg, rom.chr, rom.mirror())),
             Mapper::MMC1 => Self::Mmc1(Mmc1::new(rom.prg, rom.chr, rom.mirror())),
+        }
+    }
+
+    pub fn get_pattern_table(&'a self, idx: PTIdx) -> PatternTableRef<'a> {
+        match self {
+            Cartridge::NRom(c) => c.get_pattern_table(idx),
+            Cartridge::Mmc1(c) => c.get_pattern_table(idx),
         }
     }
 }

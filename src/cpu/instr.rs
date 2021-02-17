@@ -326,11 +326,7 @@ impl Cpu {
         let (effective_low, wrapped) = low.overflowing_add(src);
         let high_offset = (high + Wrapping(1)) & mask;
         get!(co, u16::from_le_bytes([effective_low, high.0]));
-        let effective_high = if wrapped {
-            high_offset
-        } else {
-            high
-        };
+        let effective_high = if wrapped { high_offset } else { high };
         let addr = u16::from_le_bytes([effective_low, effective_high.0]);
 
         set!(co, addr <- high_offset);

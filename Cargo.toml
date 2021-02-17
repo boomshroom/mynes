@@ -10,6 +10,7 @@ opt-level = 3
 [dependencies]
 memmap = "0.7.0"
 genawaiter = { version = "0.99.1", default_features = false }
-bounded-integer = "0.3.0"
-rgb = "0.8.25"
-# minifb = "0.19.2"
+bounded-integer = { version = "0.3.0", features = ["step_trait"] }
+image = { version = "0.23.13", default_features = false }
+# image = "0.23.13"
+minifb = { version = "0.19.2", default_features = false, features = ["x11"] }

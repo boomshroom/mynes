@@ -1,4 +1,4 @@
-#![feature(slice_as_chunks, const_in_array_repeat_expressions)]
+#![feature(slice_as_chunks, const_in_array_repeat_expressions, step_trait, step_trait_ext)]
 
 use genawaiter::stack::let_gen_using;
 use genawaiter::GeneratorState;
@@ -20,26 +20,26 @@ macro_rules! set {
 
 type Co<'a> = genawaiter::stack::Co<'a, MemoryOp, CycleData>;
 
-mod ppu;
 mod audio;
 mod cpu;
 mod decode;
 mod ines;
 mod memory;
+pub mod ppu;
 
-use ppu::{Vram, VReg};
 use audio::Apu;
 use cpu::Cpu;
 pub use ines::Rom;
 use memory::{Cartridge, SysMemory};
+use ppu::{VReg, Vram};
 
 pub struct Nes<'a> {
     pub cpu: Cpu,
-    bus: MemBus<'a>,
+    pub bus: MemBus<'a>,
 }
 
-struct MemBus<'a> {
-    cartridge: Cartridge<'a>,
+pub struct MemBus<'a> {
+    pub cartridge: Cartridge<'a>,
     memory: SysMemory,
     apu: Apu,
     ppu: Vram,
