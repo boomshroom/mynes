@@ -130,6 +130,8 @@ enum CHRMode {
     Half,
 }
 
+const EMPTY_PATTERN : &'static [u8; 0x1000] = &[0; 0x1000];
+
 impl<'a> Mmc1<'a> {
     pub fn get(&self, idx: u16) -> u8 {
         let idx = usize::from(idx);
@@ -217,12 +219,14 @@ impl<'a> Mmc1<'a> {
         }
     }
 
+
+
     pub fn get_pattern_table(&'a self, idx: PTIdx) -> PatternTableRef<'a> {
         let bank = match idx {
             PTIdx::Left => self.chr_banks[0],
             PTIdx::Right => self.chr_banks[1],
         };
-        PatternTableRef(&self.chr[bank])
+        PatternTableRef(&self.chr.get(bank).unwrap_or(EMPTY_PATTERN))
     }
 
     pub fn get_ppu(&self, idx: VAddr) -> u8 {

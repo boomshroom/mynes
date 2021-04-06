@@ -29,6 +29,15 @@ impl Default for PTIdx {
     fn default() -> Self { PTIdx::Left }
 }
 
+impl From<u8> for Point<PatternTile> {
+    fn from(b: u8) -> Self {
+        Point {
+            x: PatternTile::new(b % 16).unwrap(),
+            y: PatternTile::new(b / 16).unwrap(),
+        }
+    }
+}
+
 impl<'a> PatternTableRef<'a> {
     pub fn get_row(self, tile: Point<PatternTile>, row: PixelCoord, bit: Bit) -> u8 {
         let (rows, rest) = self.0.as_chunks::<256>();

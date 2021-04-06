@@ -4,8 +4,15 @@
 	inputs = {
 		nixpkgs.url = "github:NixOS/nixpkgs/nixos-20.09";
 		utils.url = "github:numtide/flake-utils";
-		rust-overlay.url = "github:oxalica/rust-overlay";
-		naersk.url = "github:nmattia/naersk";
+		rust-overlay = {
+			url = "github:oxalica/rust-overlay";
+			inputs.nixpkgs.follows = "nixpkgs";
+			inputs.flake-utils.follows = "utils";
+		};
+		naersk = {
+			url = "github:nmattia/naersk";
+			inputs.nixpkgs.follows = "nixpkgs";
+		};
 	};
 
 	outputs = { nixpkgs, rust-overlay, utils, naersk, ... }:
@@ -16,7 +23,7 @@
 					overlays = [ rust-overlay.overlay ];
 				};
 				rust = pkgs.rust-bin.nightly."2021-01-31".rust;
-				naersk-lib = naersk.lib.x86_64-linux.override {
+				naersk-lib = naersk.lib.${system}.override {
 					cargo = rust;
 					rustc = rust;
 				};
@@ -26,7 +33,10 @@
 					pname = "mynes";
 					root = ./.;
 					buildInputs = [ pkgs.x11 pkgs.libxkbcommon ];
-					nativeBuildInputs = [ pkgs.pkg-config ];
+					nativeBuildInputs = [ pkgs.pkg-config pkgs.makeWrapper ];
+					overrideMain = _: { postInstall = ''
+						wrapProgram $out/bin/mynes --prefix LD_LIBRARY_PATH : ${nixpkgs.lib.makeLibraryPath [pkgs.xlibs.libXcursor]}
+					''; };
 				};
 
 				defaultPackage = packages.mynes;

@@ -1,3 +1,5 @@
+use std::sync::{Arc, Mutex};
+
 use bounded_integer::bounded_integer;
 
 use crate::memory::Cartridge;
@@ -23,10 +25,11 @@ bounded_integer!(pub enum TileCoord { 0..32 });
 pub struct Vram {
     oam: Oam,
     palette: [u8; 64],
-    vram: [Nametable; 2],
+    pub vram: [Nametable; 2],
     registers: Registers,
 
     pub data_bus: u8,
+    // pub buffer: Arc<Mutex<[u32, ]>>,
 }
 
 impl Default for NTAddr {

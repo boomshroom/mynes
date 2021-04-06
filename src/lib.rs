@@ -31,7 +31,7 @@ use audio::Apu;
 use cpu::Cpu;
 pub use ines::Rom;
 use memory::{Cartridge, SysMemory};
-use ppu::{VReg, Vram};
+use ppu::{VReg, Vram, backend::Ppu, pattern::PTIdx};
 
 pub struct Nes<'a> {
     pub cpu: Cpu,
@@ -42,7 +42,7 @@ pub struct MemBus<'a> {
     pub cartridge: Cartridge<'a>,
     memory: SysMemory,
     apu: Apu,
-    ppu: Vram,
+    pub ppu: Vram,
 }
 
 enum MemoryOp {
@@ -109,8 +109,9 @@ impl<'a> Nes<'a> {
         let_gen_using!(cpu_cycle, |co| cpu.run(co));
 
         let mut buf = CycleData { val: 0, cycles: 0 };
+        let mut display = Ppu::open().unwrap();
 
-        loop {
+        while display.win.is_open() {
             let op = match cpu_cycle.resume_with(buf) {
                 GeneratorState::Yielded(op) => op,
                 GeneratorState::Complete(Ok(())) => return Ok(()),
@@ -125,8 +126,12 @@ impl<'a> Nes<'a> {
             if buf.cycles % 2 == 0 {
                 bus.apu.clock()
             }
+            if buf.cycles % 265200 == 0 {
+                display.show_background(&bus.ppu.vram[0], bus.cartridge.get_pattern_table(PTIdx::Left)).unwrap();
+            }
             buf.cycles += 1;
         }
+        Ok(())
     }
 
     pub fn set_pc(&mut self, pc: u16) { self.cpu.set_pc(pc); }
