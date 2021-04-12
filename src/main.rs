@@ -1,11 +1,11 @@
 use std::env;
-use std::fs::File;
 use std::error::Error;
+use std::fs::File;
 use std::path::Path;
 
 use memmap::Mmap;
+use mynes::ppu::pattern::PTIdx;
 use mynes::{Nes, Rom};
-use mynes::ppu::{backend::Ppu, pattern::PTIdx};
 
 fn main() -> Result<(), Box<dyn Error>> {
     let path = env::args_os().skip(1).next();

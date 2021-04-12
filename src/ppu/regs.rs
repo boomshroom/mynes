@@ -1,15 +1,16 @@
-use super::loopy::AddrReg;
+use std::cell::Cell;
+use super::loopy::{AddrReg, Time};
 use super::pattern::PTIdx;
-use super::{NTAddr, VAddr};
+use super::{NTAddr, VAddr, TileCoord, PixelCoord};
 
 #[derive(Default, Debug, Clone)]
 pub struct Registers {
-    pub control: Control,
-    pub mask: Mask,
-    pub status: Status,
+    pub control: Cell<Control>,
+    pub mask: Cell<Mask>,
+    pub status: Cell<Status>,
     oam_addr: u8,
     oam_data: u8,
-    pub addr: AddrReg,
+    pub addr: Cell<AddrReg>,
 }
 
 #[derive(Debug, Copy, Clone, Default)]
@@ -17,7 +18,7 @@ pub struct Control {
     base_nt: NTAddr,
     vram_inc: u16,
     sprite_table: PTIdx,
-    bg_table: PTIdx,
+    pub bg_table: PTIdx,
     sprite_height: u8,
     interrupt: bool,
 }
@@ -34,7 +35,7 @@ pub struct Mask {
     color: Color,
     background_left: Show,
     sprites_left: Show,
-    background: Show,
+    pub background: Show,
     sprites: Show,
     red: Emphasis,
     green: Emphasis,
@@ -48,7 +49,7 @@ enum Color {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-enum Show {
+pub enum Show {
     Show,
     Hide,
 }
@@ -60,14 +61,79 @@ enum Emphasis {
 }
 
 impl Registers {
-    pub fn clear_vblank(&mut self) { self.status.vblank = false; }
+    pub fn set_vblank(&self, val: bool) { self.status.update(|s| Status{ vblank: val, ..s }); }
 
-    pub fn advance_vaddr(&mut self) -> VAddr { self.addr.advance(self.control.vram_inc) }
+    pub fn advance_vaddr(&self) -> VAddr {
+        let mut reg = self.addr.get();
+        let addr = reg.advance(self.control.get().vram_inc);
+        self.addr.set(reg);
+        addr
+    }
 
-    pub fn set_control(&mut self, val: u8) {
+    pub fn set_control(&self, val: u8) {
         let reg = val.into();
-        self.control = reg;
-        self.addr.set_nametable(reg.base_nt);
+        self.control.set(reg);
+        self.addr.update(|mut a| { a.set_nametable(reg.base_nt, Time::Delayed); a });
+    }
+
+    pub fn enabled(&self) -> bool {
+        let mask = self.mask.get();
+        mask.background == Show::Show || mask.sprites == Show::Show
+    }
+
+    pub fn interrupt_enabled(&self) -> bool {
+        self.control.get().interrupt
+    }
+
+    pub fn increment_scrollx(&self) {
+        if self.enabled() {
+            let mut addr = self.addr.get();
+            let coarse_x = addr.get_coarse_x();
+            if coarse_x == 31 {
+                addr.set_coarse_x(TileCoord::Z, Time::Immediate);
+                let nt = addr.get_nametable();
+                addr.set_nametable(nt.flip_x(), Time::Immediate);
+            } else {
+                addr.set_coarse_x(coarse_x + 1, Time::Immediate);
+            }
+        }
+    }
+
+    pub fn increment_scrolly(&self) {
+        if self.enabled() {
+            let mut addr = self.addr.get();
+            match addr.get_fine_y().checked_add(1) {
+                Some(y) => addr.set_fine_y(y, Time::Immediate),
+                None => {
+                    addr.set_fine_y(PixelCoord::Z, Time::Immediate);
+                    match addr.get_coarse_y().get() {
+                        29 => {
+                            addr.set_coarse_y(TileCoord::Z, Time::Immediate);
+                            let nt = addr.get_nametable();
+                            addr.set_nametable(nt.flip_y(), Time::Immediate);
+                        }
+                        31 => addr.set_coarse_y(TileCoord::Z, Time::Immediate),
+                        _ => (),
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn transfer_x(&self) {
+        if self.enabled() {
+            let mut addr = self.addr.get();
+            addr.transfer_x();
+            self.addr.set(addr);
+        }
+    }
+
+    pub fn transfer_y(&self) {
+        if self.enabled() {
+            let mut addr = self.addr.get();
+            addr.transfer_y();
+            self.addr.set(addr);
+        }
     }
 }
 
@@ -89,7 +155,7 @@ impl From<Status> for u8 {
 }
 
 #[inline]
-fn test_bit<T>(val: u8, bit: u8, on: T, off: T) -> T {
+pub fn test_bit<T>(val: u8, bit: u8, on: T, off: T) -> T {
     if val & (1 << bit) != 0 {
         on
     } else {
@@ -117,7 +183,7 @@ impl From<u8> for Control {
     #[inline]
     fn from(bits: u8) -> Control {
         Control {
-            base_nt: NTAddr::new_wrapping(bits),
+            base_nt: new_wrapping!(NTAddr, bits),
             vram_inc: test_bit(bits, 2, 32, 1),
             sprite_table: test_bit(bits, 3, PTIdx::Right, PTIdx::Left),
             bg_table: test_bit(bits, 4, PTIdx::Right, PTIdx::Left),

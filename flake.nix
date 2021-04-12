@@ -22,7 +22,7 @@
 					inherit system;
 					overlays = [ rust-overlay.overlay ];
 				};
-				rust = pkgs.rust-bin.nightly."2021-01-31".rust;
+				rust = pkgs.rust-bin.nightly."2021-04-11".minimal;
 				naersk-lib = naersk.lib.${system}.override {
 					cargo = rust;
 					rustc = rust;
@@ -32,7 +32,7 @@
 				packages.mynes = naersk-lib.buildPackage {
 					pname = "mynes";
 					root = ./.;
-					buildInputs = [ pkgs.x11 pkgs.libxkbcommon ];
+					buildInputs = [ pkgs.x11 pkgs.libxkbcommon pkgs.xlibs.libXcursor ];
 					nativeBuildInputs = [ pkgs.pkg-config pkgs.makeWrapper ];
 					overrideMain = _: { postInstall = ''
 						wrapProgram $out/bin/mynes --prefix LD_LIBRARY_PATH : ${nixpkgs.lib.makeLibraryPath [pkgs.xlibs.libXcursor]}
@@ -49,7 +49,7 @@
 
 				devShell = pkgs.mkShell {
 					nativeBuildInputs = [ rust pkgs.pkg-config ];
-					buildInputs = [ pkgs.x11 pkgs.xkbcommon ];
+					buildInputs = [ pkgs.x11 pkgs.libxkbcommon ];
 				};
 			}
 		);

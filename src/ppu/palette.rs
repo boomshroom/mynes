@@ -1,66 +1,72 @@
 use bounded_integer::bounded_integer;
-
 use image::Rgb;
 
+#[derive(Debug, Default)]
 pub struct PaletteRam {
-	background: u8,
-	bg_palettes: [[u8; 3]; 4],
-	sprite_palettes: [[u8; 3]; 4],
-	unused: [u8; 3],
+    background: u8,
+    bg_palettes: [[u8; 3]; 4],
+    sprite_palettes: [[u8; 3]; 4],
+    unused: [u8; 3],
 }
 
 bounded_integer!(pub struct ColorCode { 0..0x40 });
 bounded_integer!(pub enum TileColor { 0..4 });
 bounded_integer!(pub enum PaletteIdx { 0..4 });
 
+impl Default for PaletteIdx {
+    fn default() -> Self { PaletteIdx::Z }
+}
+
 impl PaletteRam {
-	pub fn write(&mut self, idx: u8, val: u8) {
-		let idx = usize::from(idx);
-		if idx % 0x10 == 0 {
-			self.background = val;
-		} else if idx % 4 == 0 {
-			self.unused[((idx >> 2) % 4) - 1] = val;
-		} else if idx < 0x10 {
-			self.bg_palettes[(idx >> 2) % 4][(idx % 4) - 1] = val;
-		} else {
-			self.sprite_palettes[(idx >> 2) % 4][(idx % 4) - 1] = val;
-		}
-	}
+    pub fn write(&mut self, idx: u8, val: u8) {
+        let idx = usize::from(idx);
+        if idx % 0x10 == 0 {
+            self.background = val;
+        } else if idx % 4 == 0 {
+            self.unused[((idx >> 2) % 4) - 1] = val;
+        } else if idx < 0x10 {
+            self.bg_palettes[(idx >> 2) % 4][(idx % 4) - 1] = val;
+        } else {
+            self.sprite_palettes[(idx >> 2) % 4][(idx % 4) - 1] = val;
+        }
+    }
 
-	pub fn read(&mut self, idx: u8) -> u8 {
-		let idx = usize::from(idx);
-		if idx == 0 {
-			self.background
-		} else if idx % 4 == 0 {
-			self.unused[(idx >> 2) % 4]
-		} else if idx < 0x10 {
-			self.bg_palettes[(idx >> 2) % 4][(idx % 4) - 1]
-		} else {
-			self.sprite_palettes[(idx >> 2) % 4][(idx % 4) - 1]
-		}
-	}
+    pub fn read(&self, idx: u8) -> u8 {
+        let idx = usize::from(idx);
+        if idx == 0 {
+            self.background
+        } else if idx % 4 == 0 {
+            self.unused[(idx >> 2) % 4]
+        } else if idx < 0x10 {
+            self.bg_palettes[(idx >> 2) % 4][(idx % 4) - 1]
+        } else {
+            self.sprite_palettes[(idx >> 2) % 4][(idx % 4) - 1]
+        }
+    }
 
-	pub fn get_background(&self, tile: TileColor, palette: PaletteIdx) -> ColorCode {
-		if tile == TileColor::Z {
-			ColorCode::new_wrapping(self.background)
-		} else {
-			ColorCode::new_wrapping(self.bg_palettes[usize::from(palette.get())][usize::from(tile.get() - 1)])
-		}
-	}
+    pub fn get_background(&self, tile: TileColor, palette: PaletteIdx) -> ColorCode {
+        if tile == TileColor::Z {
+            new_wrapping!(ColorCode, self.background)
+        } else {
+            new_wrapping!(ColorCode, 
+                self.bg_palettes[usize::from(palette.get())][usize::from(tile.get() - 1)],
+            )
+        }
+    }
 
-	pub fn get_sprite(&self, tile: TileColor, palette: PaletteIdx) -> ColorCode {
-		if tile == TileColor::Z {
-			ColorCode::new_wrapping(self.background)
-		} else {
-			ColorCode::new_wrapping(self.sprite_palettes[usize::from(palette.get())][usize::from(tile.get() - 1)])
-		}
-	}
+    pub fn get_sprite(&self, tile: TileColor, palette: PaletteIdx) -> ColorCode {
+        if tile == TileColor::Z {
+            new_wrapping!(ColorCode, self.background)
+        } else {
+            new_wrapping!(ColorCode, 
+                self.sprite_palettes[usize::from(palette.get())][usize::from(tile.get() - 1)],
+            )
+        }
+    }
 }
 
 impl ColorCode {
-	fn as_rgb(self) -> Rgb<u8> {
-		DEFAULT_PALETTE[usize::from(self.get())]
-	}
+    pub fn as_rgb(self) -> Rgb<u8> { DEFAULT_PALETTE[usize::from(self.get())] }
 }
 
 const DEFAULT_PALETTE: [Rgb<u8>; 0x40] = [

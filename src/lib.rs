@@ -1,5 +1,13 @@
-#![feature(slice_as_chunks, const_in_array_repeat_expressions, step_trait, step_trait_ext)]
+#![feature(
+    slice_as_chunks,
+    step_trait,
+    step_trait_ext,
+    cell_update,
+)]
 
+use std::sync::{Mutex, Arc};
+use std::sync::atomic::{AtomicBool, Ordering};
+use image::{ImageBuffer, Pixel};
 use genawaiter::stack::let_gen_using;
 use genawaiter::GeneratorState;
 
@@ -18,6 +26,13 @@ macro_rules! set {
     }};
 }
 
+macro_rules! new_wrapping {
+    ($t:ty, $val:expr $(,)*) => {{
+        assert_eq!(<$t>::MIN_VALUE, 0);
+        <$t>::new($val % (<$t>::MAX_VALUE + 1)).unwrap()
+    }};
+}
+
 type Co<'a> = genawaiter::stack::Co<'a, MemoryOp, CycleData>;
 
 mod audio;
@@ -31,7 +46,11 @@ use audio::Apu;
 use cpu::Cpu;
 pub use ines::Rom;
 use memory::{Cartridge, SysMemory};
-use ppu::{VReg, Vram, backend::Ppu, pattern::PTIdx};
+#[cfg(feature = "minifb")]
+use ppu::backend::Ppu;
+
+use ppu::render::{FrameBuffer, VOp};
+use ppu::{VReg, Vram};
 
 pub struct Nes<'a> {
     pub cpu: Cpu,
@@ -61,7 +80,7 @@ impl<'a> MemBus<'a> {
         match idx {
             0..=0x1fff => self.memory.get(idx),
             0x2000..=0x3FFF => {
-                let (byte, addr) = self.ppu.get_cpu(VReg::new_wrapping(idx));
+                let (byte, addr) = self.ppu.get_cpu(new_wrapping!(VReg, idx));
                 if let Some(addr) = addr {
                     self.ppu.data_bus = self.ppu.get_ppu(addr, &self.cartridge);
                 }
@@ -76,7 +95,7 @@ impl<'a> MemBus<'a> {
         match idx {
             0..=0x1fff => self.memory.set(idx, val),
             0x2000..=0x3FFF => {
-                if let Some(addr) = self.ppu.set_cpu(VReg::new_wrapping(idx), val) {
+                if let Some(addr) = self.ppu.set_cpu(new_wrapping!(VReg, idx), val) {
                     self.ppu.set_ppu(addr, val, &mut self.cartridge);
                 }
             }
@@ -106,12 +125,22 @@ impl<'a> Nes<'a> {
     pub fn run(&mut self) -> Result<(), cpu::Error> {
         let Nes { cpu, ref mut bus } = self;
 
+        let fb = Arc::new(Mutex::new(ImageBuffer::new(256, 240)));
+
         let_gen_using!(cpu_cycle, |co| cpu.run(co));
+        let_gen_using!(ppu_cycle, |co| FrameBuffer::clock(bus.ppu.registers.clone(), co));
 
         let mut buf = CycleData { val: 0, cycles: 0 };
-        let mut display = Ppu::open().unwrap();
+        let mut vbuf = 0;
 
-        while display.win.is_open() {
+        #[cfg(feature = "minifb")]
+        let running = Ppu::open(fb.clone());
+        #[cfg(not(feature = "minifb"))]
+        let running = AtomicBool::new(true);
+
+        let mut temp_fb = None;
+
+        while running.load(Ordering::Relaxed) {
             let op = match cpu_cycle.resume_with(buf) {
                 GeneratorState::Yielded(op) => op,
                 GeneratorState::Complete(Ok(())) => return Ok(()),
@@ -126,8 +155,23 @@ impl<'a> Nes<'a> {
             if buf.cycles % 2 == 0 {
                 bus.apu.clock()
             }
-            if buf.cycles % 265200 == 0 {
-                display.show_background(&bus.ppu.vram[0], bus.cartridge.get_pattern_table(PTIdx::Left)).unwrap();
+
+            for _ in 0..3 {
+                let (cmd, draw) = match ppu_cycle.resume_with(vbuf) {
+                    GeneratorState::Yielded(cmd) => cmd,
+                    GeneratorState::Complete(never) => never,
+                };
+                match cmd {
+                    VOp::Fetch(addr) => vbuf = bus.ppu.get_ppu(addr, &bus.cartridge),
+                    VOp::Nop => (),
+                    VOp::Nmi => (), //todo!(),
+                };
+                if let Some(draw) = draw {
+                    let fb = temp_fb.get_or_insert_with(|| fb.lock().unwrap());
+                    fb[draw.point] = bus.ppu.palette.get_background(draw.tile, draw.palette).as_rgb().to_bgra()
+                } else {
+                    temp_fb.take();
+                }
             }
             buf.cycles += 1;
         }

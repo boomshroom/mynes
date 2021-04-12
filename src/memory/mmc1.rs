@@ -3,8 +3,8 @@ use std::borrow::Cow;
 use super::{CHRBank, PRGBank};
 use crate::ines;
 use crate::memory::CHR_BANK_SIZE;
+use crate::ppu::pattern::{PTIdx, PatternTableRef};
 use crate::ppu::{Nametable, VAddr};
-use crate::ppu::pattern::{PatternTableRef, PTIdx};
 
 pub struct Mmc1<'a> {
     prg_rom: &'a [PRGBank],
@@ -130,7 +130,7 @@ enum CHRMode {
     Half,
 }
 
-const EMPTY_PATTERN : &'static [u8; 0x1000] = &[0; 0x1000];
+const EMPTY_PATTERN: &'static [u8; 0x1000] = &[0; 0x1000];
 
 impl<'a> Mmc1<'a> {
     pub fn get(&self, idx: u16) -> u8 {
@@ -218,8 +218,6 @@ impl<'a> Mmc1<'a> {
             _ => (),
         }
     }
-
-
 
     pub fn get_pattern_table(&'a self, idx: PTIdx) -> PatternTableRef<'a> {
         let bank = match idx {

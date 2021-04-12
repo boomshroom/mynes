@@ -1,6 +1,6 @@
 use crate::ines::{Mapper, Rom};
+use crate::ppu::pattern::{PTIdx, PatternTableRef};
 use crate::ppu::{Nametable, VAddr};
-use crate::ppu::pattern::{PatternTableRef, PTIdx};
 
 mod mmc1;
 mod nrom;

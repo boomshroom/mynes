@@ -1,10 +1,10 @@
 use bounded_integer::bounded_integer;
 
-use super::{PixelCoord, Point};
 use super::palette::TileColor;
+use super::{PixelCoord, Point};
 
 pub struct PatternTable([u8; 0x1000]);
-#[derive(Copy,Clone)]
+#[derive(Copy, Clone)]
 pub struct PatternTableRef<'a>(pub &'a [u8; 0x1000]);
 
 pub struct TileData {
@@ -21,8 +21,8 @@ pub enum Bit {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum PTIdx {
-    Left,
-    Right,
+    Left = 0,
+    Right = 1,
 }
 
 impl Default for PTIdx {

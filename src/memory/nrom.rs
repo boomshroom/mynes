@@ -1,6 +1,5 @@
-use crate::ppu::pattern::PTIdx;
-use crate::ppu::pattern::PatternTableRef;
 use crate::ines::Mirroring;
+use crate::ppu::pattern::{PTIdx, PatternTableRef};
 use crate::ppu::{Nametable, VAddr};
 
 pub struct NRom<'a> {
