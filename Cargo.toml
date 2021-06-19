@@ -3,6 +3,7 @@ name = "mynes"
 version = "0.1.0"
 authors = ["Angelo Bulfone <mbulfone@gmail.com>"]
 edition = "2018"
+license = "MIT"
 
 [profile.dev]
 opt-level = 3
